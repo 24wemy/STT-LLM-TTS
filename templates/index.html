@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KLARIS</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 2px;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: background-color 0.3s, transform 0.3s;
+        }
+        button:disabled {
+            background-color: #9E9E9E;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) {
+            background-color: #45a049;
+            transform: scale(1.05);
+        }
+        button:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+        #audioPlayer {
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Voice Assistant</h1>
+        <button id="startRecording">Start Recording</button>
+        <button id="stopRecording" disabled>Stop Recording</button>
+        <div id="result"></div>
+        <audio id="audioPlayer" controls></audio>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        $("#startRecording").click(function() {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.start();
+
+                    mediaRecorder.addEventListener("dataavailable", event => {
+                        audioChunks.push(event.data);
+                    });
+
+                    $("#startRecording").prop("disabled", true);
+                    $("#stopRecording").prop("disabled", false);
+                });
+        });
+
+        $("#stopRecording").click(function() {
+            mediaRecorder.stop();
+
+            mediaRecorder.addEventListener("stop", () => {
+                const audioBlob = new Blob(audioChunks);
+                const formData = new FormData();
+                formData.append("audio", audioBlob);
+
+                $.ajax({
+                    url: "/process_audio",
+                    type: "POST",
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.error) {
+                            $("#result").html(`<p>Error: ${response.error}</p>`);
+                            console.error("Error:", response.error);
+                        } else {
+                            $("#result").html(`
+                                <p>You asked: ${response.question}</p>
+                                <p>Assistant's answer: ${response.answer}</p>
+                            `);
+                            if (response.audio) {
+                                const audioPlayer = document.getElementById('audioPlayer');
+                                audioPlayer.src = "data:audio/wav;base64," + response.audio;
+                                audioPlayer.style.display = 'block';
+                                audioPlayer.play().catch(e => console.error("Audio playback failed:", e));
+                            }
+                        }
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        $("#result").html(`<p>Error: ${textStatus}</p>`);
+                        console.error("AJAX error:", textStatus, errorThrown);
+                    }
+                });
+
+                audioChunks = [];
+                $("#startRecording").prop("disabled", false);
+                $("#stopRecording").prop("disabled", true);
+            });
+        });
+    </script>
+</body>
+</html>
